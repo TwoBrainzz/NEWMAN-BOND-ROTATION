@@ -2,13 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Pro Newman: Perfect Sync & Mirrored</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pro Newman: Responsive Fix</title>
 <style>
 body { margin: 0; overflow: hidden; background: #121212; font-family: 'Segoe UI', sans-serif; color: #e0e0e0; }
 #container { display: flex; width: 100vw; height: 100vh; }
-#view-3d { flex: 1; position: relative; background: #1a1a1a; }
-#view-2d { width: 420px; background: #202020; border-left: 1px solid #333; display: flex; flex-direction: column; align-items: center; box-shadow: -5px 0 20px rgba(0,0,0,0.7); z-index: 20; padding-bottom: 20px; }
-#ui-overlay { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(35, 35, 35, 0.95); padding: 15px; border-radius: 8px; width: 280px; border: 1px solid #444; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+#view-3d { flex: 1; position: relative; background: #1a1a1a; overflow: hidden; }
+#view-3d canvas { display: block; width: 100%; height: 100%; outline: none; } /* 3D Canvas Specific */
+#view-2d { width: 420px; background: #202020; border-left: 1px solid #333; display: flex; flex-direction: column; align-items: center; box-shadow: -5px 0 20px rgba(0,0,0,0.7); z-index: 20; padding-bottom: 20px; flex-shrink: 0; }
+#ui-overlay { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(35, 35, 35, 0.95); padding: 15px; border-radius: 8px; width: 280px; border: 1px solid #444; box-shadow: 0 4px 15px rgba(0,0,0,0.5); max-height: 80vh; overflow-y: auto; }
 #legend { position: absolute; bottom: 15px; left: 15px; z-index: 10; background: rgba(35, 35, 35, 0.95); padding: 10px; border-radius: 6px; border: 1px solid #444; pointer-events: none; }
 .legend-item { display: flex; align-items: center; margin-bottom: 4px; font-size: 12px; color: #eee; }
 .legend-dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; border: 1px solid #777; }
@@ -25,13 +27,21 @@ input[type=range] { width: 100%; cursor: pointer; margin-bottom: 10px; }
 .toggle-btn:hover { filter: brightness(1.1); }
 .checkbox-row { display: flex; align-items: center; margin-top: 10px; font-size: 13px; color: #ccc; padding-bottom: 5px; border-bottom: 1px solid #444; margin-bottom: 10px; }
 .checkbox-row input { margin-right: 8px; cursor: pointer; }
-canvas { background: #f0f0f0; border-radius: 4px; margin-top: 20px; box-shadow: 0 0 15px rgba(0,0,0,0.8); border: 2px solid #444; }
+#newmanCanvas { background: #f0f0f0; border-radius: 4px; margin-top: 20px; box-shadow: 0 0 15px rgba(0,0,0,0.8); border: 2px solid #444; } /* Targeted 2D Styling */
 .meter-container { width: 85%; margin-top: 20px; background: #333; height: 36px; border-radius: 6px; position: relative; overflow: hidden; border: 1px solid #555; }
 .meter-fill { height: 100%; width: 50%; background: orange; transition: width 0.1s linear, background 0.3s; } 
 .meter-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; text-shadow: 0 0 4px black; z-index: 2; color: white; line-height: 1.1; }
 .meter-subtext { font-size: 9px; font-weight: normal; opacity: 0.9; }
-.analysis-text { font-size: 13px; color: #ccc; margin-top: 10px; text-align: center; width: 90%; line-height: 1.4; }
+.analysis-text { font-size: 13px; color: #ccc; margin-top: 10px; text-align: center; width: 90%; line-height: 1.4; padding-bottom: 20px;}
 #status { font-size: 12px; color: #aaa; margin-top: 5px; min-height: 1.2em; }
+@media (max-width: 900px) {
+    #container { flex-direction: column; }
+    #view-3d { width: 100%; flex: 1; min-height: 50vh; }
+    #view-2d { width: 100%; height: 40vh; border-left: none; border-top: 2px solid #444; overflow-y: auto; box-shadow: 0 -5px 20px rgba(0,0,0,0.5); }
+    #newmanCanvas { width: 280px; height: 280px; margin-top: 10px; }
+    #ui-overlay { width: auto; right: 15px; left: 15px; top: 10px; max-height: 200px; padding: 10px; }
+    .meter-container { margin-top: 10px; height: 30px; }
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -46,7 +56,7 @@ canvas { background: #f0f0f0; border-radius: 4px; margin-top: 20px; box-shadow: 
 <div id="status">Ready.</div>
 <div class="checkbox-row">
 <input type="checkbox" id="chkHydrogens" checked onchange="toggleHydrogens()">
-<label for="chkHydrogens">Show Hydrogens (3D)</label>
+<label for="chkHydrogens">Show Hydrogens</label>
 </div>
 <div id="controls">
 <h3>2. Analysis Controls</h3>
@@ -63,7 +73,7 @@ canvas { background: #f0f0f0; border-radius: 4px; margin-top: 20px; box-shadow: 
 <div id="legend"></div>
 </div>
 <div id="view-2d">
-<h3 style="width:100%; padding: 15px 0 10px 20px; border-bottom:1px solid #333; margin:0;">2D Projection (Mirrored)</h3>
+<h3 style="width:100%; padding: 10px 0 5px 20px; border-bottom:1px solid #333; margin:0;">2D Projection</h3>
 <canvas id="newmanCanvas" width="360" height="360"></canvas>
 <div class="meter-container">
 <div class="meter-fill" id="energyBar"></div>
@@ -78,11 +88,12 @@ canvas { background: #f0f0f0; border-radius: 4px; margin-top: 20px; box-shadow: 
 <script>
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a1a);
-const camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 420) / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
 camera.position.set(8, 6, 8);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setSize(window.innerWidth - 420, window.innerHeight);
-document.getElementById('view-3d').appendChild(renderer.domElement);
+const view3d = document.getElementById('view-3d');
+renderer.setPixelRatio(window.devicePixelRatio);
+view3d.appendChild(renderer.domElement);
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.7));
@@ -96,12 +107,12 @@ let selectedBond = null;
 let rotatingFragment = [], pivot = new THREE.Vector3(), axis = new THREE.Vector3();
 let frontAtomIdx = -1, backAtomIdx = -1;
 let isSnapped = false;
-let xBase = new THREE.Vector3();
-let yBase = new THREE.Vector3();
-let canvasUpVector = new THREE.Vector3();
+let xBase = new THREE.Vector3(), yBase = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let ringAtoms = new Set();
+let touchStartTime = 0;
+let touchStartPos = new THREE.Vector2();
 const ATOM_COLORS = {
 1: { name: "Hydrogen", hex: 0xffffff, css: "#ffffff" },
 6: { name: "Carbon", hex: 0x333333, css: "#333333" },
@@ -131,7 +142,7 @@ const cid = cidJson.IdentifierList.CID[0];
 const dataRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/JSON?record_type=3d`);
 const json = await dataRes.json();
 buildScene(json.PC_Compounds[0]);
-status.innerText = "Ready. Select a bond.";
+status.innerText = "Ready. Tap a bond.";
 } catch(e) { status.innerText = "Error: " + e.message; }
 }
 function buildScene(cmp) {
@@ -227,25 +238,43 @@ stack[u] = false; return false;
 }
 for(let i=0; i<atoms.length; i++) if(!visited[i]) isCyclic(i, -1);
 }
-window.addEventListener('mousemove', (e) => {
-if(isSnapped) return;
+function updateRaycaster(clientX, clientY) {
 const rect = renderer.domElement.getBoundingClientRect();
-mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 raycaster.setFromCamera(mouse, camera);
+}
+renderer.domElement.addEventListener('touchstart', (e) => {
+if(e.touches.length === 1) {
+touchStartTime = Date.now();
+touchStartPos.set(e.touches[0].clientX, e.touches[0].clientY);
+}
+}, {passive: false});
+renderer.domElement.addEventListener('touchend', (e) => {
+if(e.changedTouches.length === 1) {
+const dx = e.changedTouches[0].clientX - touchStartPos.x;
+const dy = e.changedTouches[0].clientY - touchStartPos.y;
+if (Math.sqrt(dx*dx + dy*dy) < 10 && (Date.now() - touchStartTime) < 300) {
+e.preventDefault();
+updateRaycaster(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
 const hits = raycaster.intersectObjects(hitBoxes);
-document.body.style.cursor = hits.length>0 ? 'pointer' : 'default';
-bonds.forEach(b => { if(b !== selectedBond?.userData?.parent) b.material.color.setHex(0x999999); });
-if(hits.length>0) hits[0].object.userData.parent.material.color.setHex(0x00ffff);
+if(hits.length>0) selectBond(hits[0].object);
+}
+}
 });
 window.addEventListener('click', (e) => {
 if(e.target.closest('#ui-overlay') || isSnapped) return;
-const rect = renderer.domElement.getBoundingClientRect();
-mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-raycaster.setFromCamera(mouse, camera);
+updateRaycaster(e.clientX, e.clientY);
 const hits = raycaster.intersectObjects(hitBoxes);
 if(hits.length>0) selectBond(hits[0].object);
+});
+window.addEventListener('mousemove', (e) => {
+if(isSnapped) return;
+updateRaycaster(e.clientX, e.clientY);
+const hits = raycaster.intersectObjects(hitBoxes);
+renderer.domElement.style.cursor = hits.length>0 ? 'pointer' : 'default';
+bonds.forEach(b => { if(b !== selectedBond?.userData?.parent) b.material.color.setHex(0x999999); });
+if(hits.length>0) hits[0].object.userData.parent.material.color.setHex(0x00ffff);
 });
 function selectBond(hitMesh) {
 const u = hitMesh.userData.u;
@@ -529,7 +558,13 @@ function getFragment(s,b){let st=[s],v=new Set([s]),r=[s];while(st.length){let c
 function getAtomColor(e){return (ATOM_COLORS[e] ? ATOM_COLORS[e].hex : 0xff00ff);}
 function getAtomSymbol(e){const m={1:"H",6:"C",7:"N",8:"O",9:"F",17:"Cl",35:"Br",53:"I"};return m[e]||"X";}
 function centerCamera(){if(!atoms.length)return;const b=new THREE.Box3();atoms.forEach(a=>b.expandByPoint(a.position));const c=new THREE.Vector3();b.getCenter(c);controls.target.copy(c);camera.position.set(c.x+5,c.y+5,c.z+8);controls.update();}
-window.addEventListener('resize', () => { camera.aspect = (window.innerWidth-420)/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth-420, window.innerHeight); });
+const resizeObserver = new ResizeObserver(() => {
+const view3d = document.getElementById('view-3d');
+camera.aspect = view3d.clientWidth / view3d.clientHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(view3d.clientWidth, view3d.clientHeight);
+});
+resizeObserver.observe(document.getElementById('view-3d'));
 fetchMolecule();
 function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}
 animate();
