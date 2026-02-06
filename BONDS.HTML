@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pro Newman: Perfect Sync & Mirrored (Polished)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #121212; font-family: 'Segoe UI', sans-serif; color: #e0e0e0; }
+        
+        #container { display: flex; width: 100vw; height: 100vh; }
+        #view-3d { flex: 1; position: relative; background: #1a1a1a; }
+        
+        #view-2d { 
+            width: 420px; background: #202020; border-left: 1px solid #333; 
+            display: flex; flex-direction: column; align-items: center; 
+            box-shadow: -5px 0 20px rgba(0,0,0,0.7); z-index: 20;
+            padding-bottom: 20px;
+        }
+
+        #ui-overlay {
+            position: absolute; top: 15px; left: 15px; z-index: 10;
+            background: rgba(35, 35, 35, 0.95); padding: 15px; border-radius: 8px;
+            width: 280px; border: 1px solid #444;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        /* LEGEND STYLING */
+        #legend {
+            position: absolute; bottom: 15px; left: 15px; z-index: 10;
+            background: rgba(35, 35, 35, 0.95); padding: 10px; border-radius: 6px;
+            border: 1px solid #444; pointer-events: none;
+        }
+        .legend-item { display: flex; align-items: center; margin-bottom: 4px; font-size: 12px; color: #eee; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; border: 1px solid #777; }
+
+        h3 { margin: 0 0 10px 0; font-size: 15px; color: #fff; border-bottom: 1px solid #444; padding-bottom: 8px; }
+        input[type="text"] { width: 100%; padding: 8px; margin-bottom: 8px; background: #333; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 8px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+
+        #controls { margin-top: 15px; display: none; }
+        
+        .slider-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+        .angle-val { font-family: monospace; font-weight: bold; color: #00ffff; }
+        input[type=range] { width: 100%; cursor: pointer; margin-bottom: 10px; }
+        
+        .toggle-btn {
+            display: flex; align-items: center; justify-content: center;
+            background: #333; padding: 10px; border-radius: 4px; margin-top: 5px; 
+            cursor: pointer; border: 1px solid #555; transition: 0.2s; font-size: 13px;
+        }
+        .toggle-btn.active { background: #28a745; border-color: #28a745; color: white; }
+        .toggle-btn:hover { filter: brightness(1.1); }
+
+        /* H Toggle Checkbox */
+        .checkbox-row { display: flex; align-items: center; margin-top: 10px; font-size: 13px; color: #ccc; padding-bottom: 5px; border-bottom: 1px solid #444; margin-bottom: 10px; }
+        .checkbox-row input { margin-right: 8px; cursor: pointer; }
+
+        canvas { background: #f0f0f0; border-radius: 4px; margin-top: 20px; box-shadow: 0 0 15px rgba(0,0,0,0.8); border: 2px solid #444; }
+
+        /* ADDED TRANSITION FOR SMOOTHNESS */
+        .meter-container { width: 85%; margin-top: 20px; background: #333; height: 36px; border-radius: 6px; position: relative; overflow: hidden; border: 1px solid #555; }
+        .meter-fill { height: 100%; width: 50%; background: orange; transition: width 0.1s linear, background 0.3s; } 
+        .meter-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; text-shadow: 0 0 4px black; z-index: 2; color: white; line-height: 1.1; }
+        .meter-subtext { font-size: 9px; font-weight: normal; opacity: 0.9; }
+
+        .analysis-text { font-size: 13px; color: #ccc; margin-top: 10px; text-align: center; width: 90%; line-height: 1.4; }
+        #status { font-size: 12px; color: #aaa; margin-top: 5px; min-height: 1.2em; }
+    </style>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="container">
+        <div id="view-3d">
+            <div id="ui-overlay">
+                <h3>1. Search Molecule</h3>
+                <input type="text" id="molName" value="2-butene">
+                <button onclick="fetchMolecule()">Load Molecule</button>
+                <div id="status">Ready.</div>
+
+                <div class="checkbox-row">
+                    <input type="checkbox" id="chkHydrogens" checked onchange="toggleHydrogens()">
+                    <label for="chkHydrogens">Show Hydrogens (3D)</label>
+                </div>
+
+                <div id="controls">
+                    <h3>2. Analysis Controls</h3>
+                    <div class="slider-row">
+                        <span>Rotation</span>
+                        <span class="angle-val" id="angleDisplay">0°</span>
+                    </div>
+                    <input type="range" id="rotSlider" min="-180" max="180" value="0" step="1">
+                    
+                    <div id="btnSnap" class="toggle-btn" onclick="toggleSnap()">
+                        <span>📷 Lock Camera to View</span>
+                    </div>
+                </div>
+            </div>
+            <div id="legend"></div>
+        </div>
+
+        <div id="view-2d">
+            <h3 style="width:100%; padding: 15px 0 10px 20px; border-bottom:1px solid #333; margin:0;">2D Projection (Mirrored)</h3>
+            <canvas id="newmanCanvas" width="360" height="360"></canvas>
+            
+            <div class="meter-container">
+                <div class="meter-fill" id="energyBar"></div>
+                <div class="meter-text">
+                    <span id="energyText">Checking...</span>
+                    <span id="energySub" class="meter-subtext">(Global Strain)</span>
+                </div>
+            </div>
+
+            <div class="analysis-text" id="analysisOutput">
+                Select a bond to view.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+        const camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 420) / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 8);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth - 420, window.innerHeight);
+        document.getElementById('view-3d').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
+
+        const ctx = document.getElementById('newmanCanvas').getContext('2d');
+
+        // --- STATE ---
+        let atoms = [], bonds = [], hitBoxes = [], sprites = [];
+        let atomData = [], adjacency = [];
+        let selectedBond = null;
+        let rotatingFragment = [], pivot = new THREE.Vector3(), axis = new THREE.Vector3();
+        let frontAtomIdx = -1, backAtomIdx = -1;
+        let isSnapped = false;
+        
+        // Projection Basis
+        let xBase = new THREE.Vector3();
+        let yBase = new THREE.Vector3();
+        let canvasUpVector = new THREE.Vector3();
+        
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let ringAtoms = new Set();
+
+        const ATOM_COLORS = {
+            1: { name: "Hydrogen", hex: 0xffffff, css: "#ffffff" },
+            6: { name: "Carbon", hex: 0x333333, css: "#333333" },
+            7: { name: "Nitrogen", hex: 0x0000ff, css: "#0000ff" },
+            8: { name: "Oxygen", hex: 0xff0000, css: "#ff0000" },
+            9: { name: "Fluorine", hex: 0x90e050, css: "#90e050" },
+            17: { name: "Chlorine", hex: 0x1ff01f, css: "#1ff01f" },
+            35: { name: "Bromine", hex: 0xa62929, css: "#a62929" },
+            53: { name: "Iodine", hex: 0x940094, css: "#940094" }
+        };
+
+        // --- FETCHING ---
+        async function fetchMolecule() {
+            const name = document.getElementById('molName').value.trim();
+            const status = document.getElementById('status');
+            
+            [...atoms, ...bonds, ...hitBoxes, ...sprites].forEach(o => scene.remove(o));
+            atoms = []; bonds = []; hitBoxes = []; sprites = []; atomData = []; adjacency = [];
+            selectedBond = null; isSnapped = false; ringAtoms = new Set();
+            document.getElementById('btnSnap').className = 'toggle-btn';
+            document.getElementById('controls').style.display = 'none';
+            controls.enabled = true; controls.enableRotate = true;
+            
+            status.innerText = "Processing...";
+            drawEmptyCanvas();
+
+            try {
+                const cidRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${name}/cids/JSON`);
+                const cidJson = await cidRes.json();
+                if(!cidJson.IdentifierList) throw new Error("Not found.");
+                const cid = cidJson.IdentifierList.CID[0];
+
+                const dataRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/JSON?record_type=3d`);
+                const json = await dataRes.json();
+                
+                buildScene(json.PC_Compounds[0]);
+                status.innerText = "Ready. Select a bond.";
+
+            } catch(e) { status.innerText = "Error: " + e.message; }
+        }
+
+        function buildScene(cmp) {
+            const coords = cmp.coords[0].conformers[0];
+            const elements = cmp.atoms.element;
+            const aids1 = cmp.bonds ? cmp.bonds.aid1 : [];
+            const aids2 = cmp.bonds ? cmp.bonds.aid2 : [];
+            const orders = cmp.bonds ? cmp.bonds.order : []; 
+
+            for(let i=0; i<elements.length; i++) adjacency[i] = [];
+
+            // Track elements for Legend
+            let presentElements = new Set();
+
+            for(let i=0; i<elements.length; i++) {
+                const el = elements[i];
+                presentElements.add(el);
+                const pos = new THREE.Vector3(coords.x[i], coords.y[i], coords.z[i]||0);
+                
+                const conf = ATOM_COLORS[el] ? ATOM_COLORS[el] : {name: "Other", hex: 0xff00ff, css: "#ff00ff"};
+                const rad = el===1 ? 0.25 : 0.4;
+                
+                const mesh = new THREE.Mesh(new THREE.SphereGeometry(rad,32,32), new THREE.MeshPhongMaterial({color:conf.hex}));
+                mesh.position.copy(pos);
+                mesh.userData = { elem: el }; 
+                scene.add(mesh);
+                atoms.push(mesh);
+                atomData.push({ basePos: pos.clone(), elem: el });
+            }
+
+            for(let i=0; i<aids1.length; i++) {
+                const u = aids1[i]-1;
+                const v = aids2[i]-1;
+                const order = orders[i];
+
+                if(!atoms[u] || !atoms[v]) continue;
+
+                adjacency[u].push({id: v, order: order});
+                adjacency[v].push({id: u, order: order});
+
+                const radius = order > 1 ? 0.15 : 0.1;
+                const vis = new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,1,16), new THREE.MeshPhongMaterial({color:0x999999}));
+                vis.userData = { atoms: [u, v] };
+                scene.add(vis);
+                bonds.push(vis);
+
+                const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,1,8), new THREE.MeshBasicMaterial({visible:false}));
+                hit.userData = {u:u, v:v, parent:vis, order: order};
+                scene.add(hit);
+                hitBoxes.push(hit);
+
+                updateBond(vis, hit, atoms[u].position, atoms[v].position);
+
+                if(order > 1) {
+                    const labelText = order === 2 ? "π" : "2π";
+                    const labelTex = createStickerTexture(labelText);
+                    const decal = new THREE.Mesh(new THREE.CylinderGeometry(radius+0.05, radius+0.05, 0.7, 32, 1, true), 
+                        new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+                    vis.add(decal); decal.rotation.y = -Math.PI / 2; 
+                }
+            }
+            updateLegend(presentElements);
+            detectRings();
+            toggleHydrogens(); 
+            centerCamera();
+        }
+
+        function updateLegend(elementSet) {
+            const container = document.getElementById('legend');
+            container.innerHTML = ""; 
+            elementSet.forEach(el => {
+                const data = ATOM_COLORS[el] || {name: "Other", css: "#ff00ff"};
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `<div class="legend-dot" style="background:${data.css}"></div>${data.name}`;
+                container.appendChild(item);
+            });
+        }
+
+        function toggleHydrogens() {
+            const show = document.getElementById('chkHydrogens').checked;
+            atoms.forEach(mesh => { if (mesh.userData.elem === 1) mesh.visible = show; });
+            bonds.forEach(mesh => {
+                const u = mesh.userData.atoms[0];
+                const v = mesh.userData.atoms[1];
+                const uIsH = atomData[u].elem === 1;
+                const vIsH = atomData[v].elem === 1;
+                if (!show && (uIsH || vIsH)) mesh.visible = false;
+                else mesh.visible = true;
+            });
+        }
+
+        function createStickerTexture(text) {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d'); ctx.fillStyle = "#00ffff"; ctx.font = "bold 80px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.shadowColor = "black"; ctx.shadowBlur = 4; ctx.fillText(text, 64, 64); ctx.fillText(text, 192, 64);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function detectRings() {
+            let visited = new Array(atoms.length).fill(false);
+            let stack = new Array(atoms.length).fill(false);
+            function isCyclic(u, parent) {
+                visited[u] = true; stack[u] = true;
+                for (let e of adjacency[u]) {
+                    if (!visited[e.id]) { if (isCyclic(e.id, u)) { ringAtoms.add(u); return true; } }
+                    else if (e.id !== parent && stack[e.id]) { ringAtoms.add(u); return true; }
+                }
+                stack[u] = false; return false;
+            }
+            for(let i=0; i<atoms.length; i++) if(!visited[i]) isCyclic(i, -1);
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            if(isSnapped) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(hitBoxes);
+            document.body.style.cursor = hits.length>0 ? 'pointer' : 'default';
+            bonds.forEach(b => { if(b !== selectedBond?.userData?.parent) b.material.color.setHex(0x999999); });
+            if(hits.length>0) hits[0].object.userData.parent.material.color.setHex(0x00ffff);
+        });
+
+        window.addEventListener('click', (e) => {
+            if(e.target.closest('#ui-overlay') || isSnapped) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(hitBoxes);
+            if(hits.length>0) selectBond(hits[0].object);
+        });
+
+        function selectBond(hitMesh) {
+            const u = hitMesh.userData.u;
+            const v = hitMesh.userData.v;
+            const order = hitMesh.userData.order;
+
+            bonds.forEach(b => b.material.color.setHex(0x999999));
+            hitMesh.userData.parent.material.color.setHex(0xffff00);
+            selectedBond = hitMesh;
+
+            if (order > 1) {
+                document.getElementById('status').innerText = "⚠️ Pi Bond (Restricted)";
+                document.getElementById('controls').style.display = 'none';
+                frontAtomIdx = u; backAtomIdx = v;
+                calculateBasis(u, v);
+                updateNewmanAnalysis(0);
+                return;
+            }
+
+            const frag = getFragment(v, u);
+            if (frag.includes(u)) {
+                document.getElementById('status').innerText = "⚠️ Ring Bond (Locked)";
+                document.getElementById('controls').style.display = 'none';
+                frontAtomIdx = u; backAtomIdx = v;
+                calculateBasis(u, v);
+                updateNewmanAnalysis(0);
+                return;
+            }
+
+            rotatingFragment = frag;
+            pivot.copy(atoms[u].position);
+            axis.subVectors(atoms[v].position, atoms[u].position).normalize();
+            rotatingFragment.forEach(i => atomData[i].basePos.copy(atoms[i].position));
+
+            frontAtomIdx = u; backAtomIdx = v; 
+            calculateBasis(u, v);
+
+            document.getElementById('controls').style.display = 'block';
+            document.getElementById('rotSlider').value = 0;
+            document.getElementById('angleDisplay').innerText = "0°";
+            document.getElementById('status').innerText = "Bond Selected.";
+            
+            updateNewmanAnalysis(0);
+        }
+
+        function calculateBasis(u, v) {
+            const uPos = atoms[u].position;
+            const vPos = atoms[v].position;
+            const look = new THREE.Vector3().subVectors(vPos, uPos).normalize();
+            let up = new THREE.Vector3(0,1,0);
+            if(Math.abs(look.dot(up)) > 0.9) up.set(1,0,0);
+            xBase.crossVectors(look, up).normalize();
+            yBase.crossVectors(look, xBase).normalize();
+        }
+
+        function toggleSnap() {
+            if(!selectedBond) return;
+            isSnapped = !isSnapped;
+            const btn = document.getElementById('btnSnap');
+            if(isSnapped) {
+                btn.className = 'toggle-btn active';
+                btn.innerHTML = '<span>🔒 Un-Lock Camera</span>';
+                controls.enableRotate = false;
+                snapCamera();
+            } else {
+                btn.className = 'toggle-btn';
+                btn.innerHTML = '<span>📷 Lock Camera to View</span>';
+                controls.enableRotate = true;
+                camera.position.add(new THREE.Vector3(2,2,2)); camera.lookAt(0,0,0);
+            }
+        }
+
+        function snapCamera() {
+            if(!selectedBond) return;
+            const uPos = atoms[frontAtomIdx].position;
+            const vPos = atoms[backAtomIdx].position;
+            const direction = new THREE.Vector3().subVectors(uPos, vPos).normalize();
+            const camPos = uPos.clone().add(direction.multiplyScalar(8)); 
+            camera.position.copy(camPos);
+            camera.lookAt(vPos);
+            camera.up.copy(yBase);
+            camera.updateProjectionMatrix();
+        }
+
+        document.getElementById('rotSlider').addEventListener('input', (e) => {
+            if(!selectedBond) return;
+            const deg = parseFloat(e.target.value);
+            document.getElementById('angleDisplay').innerText = deg + "°";
+            const rad = deg * (Math.PI/180);
+            const q = new THREE.Quaternion().setFromAxisAngle(axis, rad);
+
+            rotatingFragment.forEach(i => {
+                const pos = atomData[i].basePos.clone();
+                pos.sub(pivot).applyQuaternion(q).add(pivot);
+                atoms[i].position.copy(pos);
+            });
+
+            hitBoxes.forEach((h, i) => {
+                const u = h.userData.u, v = h.userData.v;
+                if(rotatingFragment.includes(u) || rotatingFragment.includes(v)) {
+                    updateBond(bonds[i], h, atoms[u].position, atoms[v].position);
+                }
+            });
+
+            updateNewmanAnalysis(deg);
+            if(isSnapped) snapCamera(); 
+        });
+
+        function updateNewmanAnalysis(deg) {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, 360, 360);
+            const cx=180, cy=180;
+            
+            const bondDir = axis.clone().normalize();
+            let upRef = new THREE.Vector3(0,1,0);
+            if(Math.abs(bondDir.dot(upRef)) > 0.95) upRef.set(1,0,0);
+
+            xBase.crossVectors(bondDir, upRef).normalize();
+            yBase.crossVectors(bondDir, xBase).normalize();
+
+            ctx.beginPath(); ctx.arc(cx,cy,65,0,2*Math.PI); 
+            ctx.lineWidth=3; ctx.strokeStyle="#0055ff"; ctx.stroke();
+
+            adjacency[backAtomIdx].forEach(edge => {
+                const n = edge.id;
+                if(n===frontAtomIdx) return;
+                const vec = new THREE.Vector3().subVectors(atoms[n].position, atoms[backAtomIdx].position);
+                
+                // MIRROR FLIP (Negate DX)
+                const dx = -vec.dot(xBase);
+                const dy = vec.dot(yBase); 
+                const ang = Math.atan2(-dy, dx);
+                
+                const startX = cx + 65*Math.cos(ang);
+                const startY = cy + 65*Math.sin(ang);
+                drawRecursiveChain(n, backAtomIdx, startX, startY, "#0055ff", 0);
+            });
+
+            adjacency[frontAtomIdx].forEach(edge => {
+                const n = edge.id;
+                if(n===backAtomIdx) return;
+                drawRecursiveChain(n, frontAtomIdx, cx, cy, "#dd0000", 0);
+            });
+
+            ctx.beginPath(); ctx.arc(cx,cy,5,0,2*Math.PI); ctx.fillStyle="#dd0000"; ctx.fill();
+            calculateGlobalStability();
+        }
+
+        function drawRecursiveChain(currIdx, parentIdx, startX, startY, color, depth=0) {
+            let endX, endY;
+            const parentOrder = getBondOrder(currIdx, parentIdx);
+
+            if(depth === 0) {
+                const vec = new THREE.Vector3().subVectors(atoms[currIdx].position, atoms[parentIdx].position);
+                const dx = -vec.dot(xBase); // MIRROR FLIP
+                const dy = vec.dot(yBase);
+                const ang = Math.atan2(-dy, dx);
+                const isBack = (color === "#0055ff");
+                const len = isBack ? 45 : 60; 
+                endX = startX + len * Math.cos(ang);
+                endY = startY + len * Math.sin(ang);
+            } else {
+                const vec = new THREE.Vector3().subVectors(atoms[currIdx].position, atoms[parentIdx].position);
+                const dx = -vec.dot(xBase); // MIRROR FLIP
+                const dy = vec.dot(yBase);
+                endX = startX + dx * 45;
+                endY = startY + (-dy) * 45;
+            }
+
+            drawMultiLine(startX, startY, endX, endY, parentOrder, color);
+
+            const neighbors = adjacency[currIdx].filter(e => e.id !== parentIdx);
+            const carbonNeighbors = neighbors.filter(e => atomData[e.id].elem === 6);
+            
+            if(carbonNeighbors.length > 0) {
+                carbonNeighbors.forEach(e => {
+                    drawRecursiveChain(e.id, currIdx, endX, endY, color, depth + 1);
+                });
+            } else {
+                if(atomData[currIdx].elem === 6) drawTextLabel("CH3", endX, endY, color);
+                else drawTextLabel(getAtomSymbol(atomData[currIdx].elem), endX, endY, color);
+            }
+        }
+
+        function drawMultiLine(x1, y1, x2, y2, order, color) {
+            const dx = x2 - x1; const dy = y2 - y1;
+            const len = Math.sqrt(dx*dx + dy*dy); if(len === 0) return;
+            const ox = (dy / len) * 3; const oy = (-dx / len) * 3;
+            ctx.lineWidth = 2; ctx.strokeStyle = color;
+
+            if (order === 1) {
+                ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            } else if (order === 2) {
+                ctx.beginPath(); ctx.moveTo(x1+ox, y1+oy); ctx.lineTo(x2+ox, y2+oy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x1-ox, y1-oy); ctx.lineTo(x2-ox, y2-oy); ctx.stroke();
+            } else if (order === 3) {
+                ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x1+ox*1.5, y1+oy*1.5); ctx.lineTo(x2+ox*1.5, y2+oy*1.5); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x1-ox*1.5, y1-oy*1.5); ctx.lineTo(x2-ox*1.5, y2-oy*1.5); ctx.stroke();
+            }
+        }
+
+        function getBondOrder(u, v) {
+            const edge = adjacency[u].find(e => e.id === v);
+            return edge ? edge.order : 1;
+        }
+
+        function drawTextLabel(text, x, y, color) {
+            ctx.font = "bold 13px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            const width = ctx.measureText(text).width + 8;
+            ctx.beginPath(); ctx.fillStyle = "rgba(255,255,255,0.95)"; ctx.roundRect(x - width/2, y - 10, width, 20, 4); ctx.fill();
+            ctx.lineWidth = 1; ctx.strokeStyle = "#999"; ctx.stroke();
+            ctx.fillStyle = (text === "H") ? "#444" : color; ctx.fillText(text, x, y);
+        }
+
+        // --- UPDATED ANALYSIS LOGIC START ---
+
+        function calculateGlobalStability() {
+            let totalStrain = 0; 
+            let worstState = "anti";
+
+            for(let i=0; i<adjacency.length; i++) {
+                const u = i;
+                adjacency[u].forEach(edge => {
+                    const v = edge.id;
+                    if(u > v) return;
+                    if(adjacency[u].length < 2 || adjacency[v].length < 2) return;
+                    if (ringAtoms.has(u) && ringAtoms.has(v)) return; 
+                    const res = analyzeSingleBond(u, v);
+                    totalStrain += res.strain;
+                    
+                    const priority = { "full_eclipse": 4, "partial_eclipse": 3, "gauche": 2, "anti": 1 };
+                    if (priority[res.type] > priority[worstState]) worstState = res.type;
+                });
+            }
+            const bar = document.getElementById('energyBar');
+            const txt = document.getElementById('energyText');
+            const sub = document.getElementById('energySub');
+            const out = document.getElementById('analysisOutput');
+
+            if (totalStrain === 0 && ringAtoms.size > 0) {
+                bar.style.width = "100%"; bar.style.background = "#555"; 
+                txt.innerText = "RIGID RING SYSTEM"; sub.innerText = "Rotation Restricted";
+                out.innerHTML = "This molecule is mostly cyclic rings.<br>Rotation is not possible.";
+                return;
+            }
+
+            // DYNAMIC SCALING
+            // Max strain approx 28 units (for Butane syn-periplanar)
+            let strainPercent = Math.min(100, (totalStrain / 28) * 100); 
+            if(strainPercent < 5) strainPercent = 5;
+
+            bar.style.width = strainPercent + "%";
+
+            if (worstState === "full_eclipse") {
+                bar.style.background = "#b71c1c"; 
+                txt.innerText = "CRITICAL INSTABILITY"; 
+                txt.style.color = "white";
+                sub.innerText = "Syn-Periplanar (Clash)";
+                out.innerHTML = "⚠️ <strong style='color:#b71c1c'>Major Instability</strong><br>Large groups are colliding (Fully Eclipsed).";
+            } else if (strainPercent > 65) {
+                bar.style.background = "#ff9800"; 
+                txt.innerText = "UNSTABLE (Eclipsed)"; 
+                txt.style.color = "white";
+                sub.innerText = "Torsional Strain";
+                out.innerHTML = "Substituents are eclipsing hydrogens.<br>High energy state.";
+            } else if (worstState === "gauche") {
+                bar.style.background = "#fdd835"; 
+                txt.innerText = "STABLE (Gauche)"; 
+                txt.style.color = "white";
+                sub.innerText = "Staggered";
+                out.innerHTML = "Staggered with some steric interactions (Gauche).";
+            } else {
+                bar.style.background = "#43a047"; 
+                txt.innerText = "MOST STABLE (Anti)"; 
+                txt.style.color = "white";
+                sub.innerText = "Minimum Energy";
+                out.innerHTML = "✅ <strong style='color:#43a047'>Anti-Periplanar</strong><br>Groups are far apart. Ideal conformation.";
+            }
+        }
+
+        function analyzeSingleBond(u, v) {
+            const uPos = atoms[u].position; const vPos = atoms[v].position;
+            const axis = new THREE.Vector3().subVectors(vPos, uPos).normalize();
+            let up = new THREE.Vector3(0,1,0); if(Math.abs(axis.dot(up)) > 0.9) up.set(1,0,0);
+            const xBase = new THREE.Vector3().crossVectors(axis, up).normalize();
+            const yBase = new THREE.Vector3().crossVectors(axis, xBase).normalize();
+            let anglesU = [], anglesV = [];
+            
+            adjacency[u].forEach(e => {
+                const n = e.id; if(n===v) return;
+                const vec = new THREE.Vector3().subVectors(atoms[n].position, uPos);
+                const ang = Math.atan2(vec.dot(yBase), vec.dot(xBase));
+                anglesU.push({ang: ang, size: atomData[n].elem > 1 ? 2 : 1});
+            });
+            adjacency[v].forEach(e => {
+                const n = e.id; if(n===u) return;
+                const vec = new THREE.Vector3().subVectors(atoms[n].position, vPos);
+                const ang = Math.atan2(vec.dot(yBase), vec.dot(xBase));
+                anglesV.push({ang: ang, size: atomData[n].elem > 1 ? 2 : 1});
+            });
+
+            let localStrain = 0; let state = "anti";
+            
+            for(let a of anglesU) {
+                for(let b of anglesV) {
+                    let diffRad = Math.abs(a.ang - b.ang);
+                    let deg = (diffRad * 180 / Math.PI) % 360;
+                    if(deg > 180) deg = 360 - deg;
+
+                    // 1. Continuous Torsional Energy Curve (Cosine based)
+                    let contribution = (1 + Math.cos(3 * diffRad)) * 2.0; 
+                    
+                    // 2. Steric Weighting
+                    if (a.size > 1 && b.size > 1) {
+                        if (deg < 45) contribution += (45 - deg) * 0.7; // Spike at 0 deg
+                        if (deg >= 45 && deg < 80) contribution += 3.5; // Bump for Gauche
+                    }
+                    localStrain += contribution;
+
+                    // 3. WIDER Detection Windows
+                    if (deg < 35) {
+                        if (a.size > 1 && b.size > 1) state = "full_eclipse";
+                        else if(state !== "full_eclipse") state = "partial_eclipse";
+                    } else if (deg >= 35 && deg <= 85) {
+                        if (a.size > 1 && b.size > 1 && state === "anti") state = "gauche";
+                    }
+                }
+            }
+            return {strain: localStrain, type: state};
+        }
+        // --- UPDATED ANALYSIS LOGIC END ---
+
+        function drawEmptyCanvas() { ctx.fillStyle="#f0f0f0"; ctx.fillRect(0,0,360,360); ctx.fillStyle="#aaa"; ctx.font="14px Arial"; ctx.textAlign="center"; ctx.fillText("Select a bond", 180, 180); }
+        function updateBond(vis, hit, a, b) { const mid = new THREE.Vector3().addVectors(a,b).multiplyScalar(0.5); const dist = a.distanceTo(b); const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), new THREE.Vector3().subVectors(b,a).normalize()); vis.position.copy(mid); vis.scale.set(1,dist,1); vis.quaternion.copy(q); hit.position.copy(mid); hit.scale.set(1,dist,1); hit.quaternion.copy(q); }
+        function getFragment(s,b){let st=[s],v=new Set([s]),r=[s];while(st.length){let c=st.pop();for(let e of adjacency[c]) {let n=e.id; if(n!==b&&!v.has(n)){v.add(n);r.push(n);st.push(n);}}}return r;}
+        function getAtomColor(e){return (ATOM_COLORS[e] ? ATOM_COLORS[e].hex : 0xff00ff);}
+        function getAtomSymbol(e){const m={1:"H",6:"C",7:"N",8:"O",9:"F",17:"Cl",35:"Br",53:"I"};return m[e]||"X";}
+        function centerCamera(){if(!atoms.length)return;const b=new THREE.Box3();atoms.forEach(a=>b.expandByPoint(a.position));const c=new THREE.Vector3();b.getCenter(c);controls.target.copy(c);camera.position.set(c.x+5,c.y+5,c.z+8);controls.update();}
+        window.addEventListener('resize', () => { camera.aspect = (window.innerWidth-420)/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth-420, window.innerHeight); });
+        
+        fetchMolecule();
+        function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}
+        animate();
+    </script>
+</body>
+</html>
